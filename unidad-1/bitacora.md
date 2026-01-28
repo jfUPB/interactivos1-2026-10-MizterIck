@@ -7,7 +7,7 @@ El zapato
 ### Actividad 05
 Programa p5.js
 
-```
+``` js
 let port;
 let connectBtn;
 
@@ -64,7 +64,7 @@ function connectBtnClick() {
 
 Código Micro:
 
-```
+``` python
 from microbit import *
 
 uart.init(baudrate=115200)
@@ -77,9 +77,14 @@ while True:
         uart.write('B')
         sleep(250)
 ```
+
+
+Yo creo una variable PositionX en la cual inicializo el valor de la posición en X y la coloco dentro de los valores del elipse donde corresponde, luego dentro de los IF del botón A y B modifico el valor
+de la variable PositionX en +15/-15 en cada botón para así modificar la posición del círculo en el canvas.
 ## Bitácora de aplicación 
 
 
 
 ## Bitácora de reflexión
+
 
