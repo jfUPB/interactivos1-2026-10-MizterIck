@@ -105,9 +105,73 @@ de la variable PositionX en +15/-15 en cada botón para así modificar la posici
 
 ### Actividad 06
 
-El código de MicroBit crea como tal los botones con los que se puede interactuar dentro del sistema, en este caso solo el botón "A"
-El código de p5.js por otro lado le asigna al botón habilitado una función específica, pero antes de eso crea un canvas en el que se coloca una figura, en esta ocación un cuadrado. La función específica en este caso de los botones es el hacer cambiar de color el cuadrado a ser rojo en caso de presionar el botón A y en caso de no tenerlo presionado el cuadrado se mantiene en el color verde.
+El código de MicroBit crea como tal los botones con los que se puede interactuar dentro del sistema, en este caso solo el botón "A" y le aplica un cooldown para presionar el botón
 
+``` python
+from microbit import *
 
+uart.init(baudrate=115200)
 
+while True:
+
+    if button_a.was_pressed():
+        uart.write('A')
+    else:
+        uart.write('N')
+
+    sleep(100)
+```
+
+El código de p5.js por otro lado le asigna al botón habilitado una función específica, pero antes de eso crea un canvas en el que se coloca una figura, en esta ocación un cuadrado y a la vez se crea un botón para conectar al micro:bit y se le asigna una posición en el canvas. La función específica en este caso de los botones es el hacer cambiar de color el cuadrado a ser rojo en caso de presionar el botón A y en caso de no tenerlo presionado el cuadrado se mantiene en el color verde.
+
+``` python
+  let port;
+  let connectBtn;
+  let connectionInitialized = false;
+
+  function setup() {
+    createCanvas(400, 400);
+    background(220);
+    port = createSerial();
+    connectBtn = createButton("Connect to micro:bit");
+    connectBtn.position(80, 300);
+    connectBtn.mousePressed(connectBtnClick);
+  }
+
+  function draw() {
+    background(220);
+
+    if (port.opened() && !connectionInitialized) {
+      port.clear();
+      connectionInitialized = true;
+    }
+
+    if (port.availableBytes() > 0) {
+      let dataRx = port.read(1);
+      if (dataRx == "A") {
+        fill("red");
+      } else if (dataRx == "N") {
+        fill("green");
+      }
+    }
+
+    rectMode(CENTER);
+    rect(width / 2, height / 2, 50, 50);
+
+    if (!port.opened()) {
+      connectBtn.html("Connect to micro:bit");
+    } else {
+      connectBtn.html("Disconnect");
+    }
+  }
+
+  function connectBtnClick() {
+    if (!port.opened()) {
+      port.open("MicroPython", 115200);
+      connectionInitialized = false;
+    } else {
+      port.close();
+    }
+  }
+```
 
