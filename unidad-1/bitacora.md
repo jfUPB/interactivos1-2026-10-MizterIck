@@ -1,8 +1,25 @@
 # Unidad 1
 ## Bitácora de proceso de aprendizaje
 ### Actividad 01
-El zapato
-<img width="300" height="144" alt="image" src="https://github.com/user-attachments/assets/da27d4fa-5bf0-4176-89ff-c8f9827e09cb" />
+¿Qué es un sistema físico interactivo?
+Un sistema físico interactivo es una combinación de componentes físicos (como sensores, pantallas, luces, etc.) con un componente digital (software) y lógica que permiten a una persona o un entorno influir en el comportamiento de un espacio en tiempo real.
+
+¿Cómo podrías aplicar lo que has visto en tu perfil profesional?
+Teniendo en cuenta que yo pienso ir por la rama de videojuegos, todo el contenido visto puede tener una aplicación directa en videojuegos que utilicen realidad virtual o realidad aumentada.
+
+### Actividad 02
+¿Qué es el diseño/arte generativo?
+El diseño generativo es un proceso creativo en el que se usan reglas, algoritmos y datos para que un sistema (generalmente una computadora) genere resultados visuales, estructurales o narrativos de forma autónoma o semi-autónoma.
+
+¿Cómo podrías aplicar lo que has visto en tu perfil profesional?
+Se pueden utilizar dentro de un videojuego para:
+- Crear mundos, niveles o paisajes que cambian automáticamente,
+- Generar patrones visuales o efectos que reaccionan a la interacción del jugador,
+- Programar música o sonido adaptativo que evoluciona durante el juego.
+
+### Actividad 04
+¿Por qué no funcionaba el programa con was_pressed() y por qué funciona con is_pressed()?
+Si usas is_pressed(), el programa podría enviar múltiples mensajes si el botón se mantiene presionado.
 
 ### Actividad 05
 Programa p5.js
@@ -86,5 +103,6 @@ de la variable PositionX en +15/-15 en cada botón para así modificar la posici
 
 
 ## Bitácora de reflexión
+
 
 
