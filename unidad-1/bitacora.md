@@ -19,7 +19,9 @@ Se pueden utilizar dentro de un videojuego para:
 
 ### Actividad 04
 ¿Por qué no funcionaba el programa con was_pressed() y por qué funciona con is_pressed()?
-Si usas is_pressed(), el programa podría enviar múltiples mensajes si el botón se mantiene presionado.
+Si usas was_pressed(), el programa no podría enviar múltiples mensajes si el botón se mantiene presionado, eso quiere decir que en caso de mantener presionado el botón el color no se mantendría.
+
+## Bitácora de aplicación 
 
 ### Actividad 05
 Programa p5.js
@@ -98,11 +100,14 @@ while True:
 
 Yo creo una variable PositionX en la cual inicializo el valor de la posición en X y la coloco dentro de los valores del elipse donde corresponde, luego dentro de los IF del botón A y B modifico el valor
 de la variable PositionX en +15/-15 en cada botón para así modificar la posición del círculo en el canvas.
-## Bitácora de aplicación 
-
-
 
 ## Bitácora de reflexión
+
+### Actividad 06
+
+El código de MicroBit crea como tal los botones con los que se puede interactuar dentro del sistema, en este caso solo el botón "A"
+El código de p5.js por otro lado le asigna al botón habilitado una función específica, pero antes de eso crea un canvas en el que se coloca una figura, en esta ocación un cuadrado. La función específica en este caso de los botones es el hacer cambiar de color el cuadrado a ser rojo en caso de presionar el botón A y en caso de no tenerlo presionado el cuadrado se mantiene en el color verde.
+
 
 
 
