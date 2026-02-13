@@ -12,7 +12,7 @@ Las Acciones (Lo que vemos y oímos): Son las tareas concretas que el programa h
 ### Actividad 2:
 Codigo del cemaforo modificado:
 
-```
+``` python
 from microbit import *
 import utime
 
@@ -137,7 +137,7 @@ No siempre está claro el flujo que sigue el programa. Hay momentos en los que v
 
 # Codigo:
 
-```
+``` python
 from microbit import *
 import utime
 import music
@@ -268,3 +268,4 @@ task.update()
 utime.sleep_ms(20)
 ```
 ## Bitácora de reflexión
+
