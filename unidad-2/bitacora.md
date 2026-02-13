@@ -133,7 +133,7 @@ No siempre está claro el flujo que sigue el programa. Hay momentos en los que v
 ## Actividad 4:
 #### Maquina de Estados:
 
-<img width="353" height="438" alt="image" src="https://github.com/user-attachments/assets/299ae5fa-1669-417e-8f06-8bb6d3be72e5" />
+<img width="394" height="438" alt="image" src="https://github.com/user-attachments/assets/dfc219c7-6828-41f1-9818-0702a2b3c38a" />
 
 # Codigo:
 
@@ -265,6 +265,7 @@ while True:
     utime.sleep_ms(20)
 ```
 ## Bitácora de reflexión
+
 
 
 
