@@ -2,8 +2,144 @@
 
 ## Bitácora de proceso de aprendizaje
 ### Actividad 01
-```
 
+``` python
+from microbit import *
+import utime
+   
+   class Timer:
+       def __init__(self, owner, event_to_post, duration):
+           self.owner = owner
+           self.event = event_to_post
+           self.duration = duration
+   
+           self.start_time = 0
+           self.active = False
+   
+       def start(self, new_duration=None):
+           if new_duration is not None:
+               self.duration = new_duration
+           self.start_time = utime.ticks_ms()
+           self.active = True
+   
+       def stop(self):
+           self.active = False
+   
+       def update(self):
+           if self.active:
+               if utime.ticks_diff(utime.ticks_ms(), self.start_time) >= self.duration:
+                   self.active = False
+                   self.owner.post_event(self.event)
+   
+   
+   class Semaforo:
+       def __init__(self,_x,_y,_timeInRed,_timeInGreen,_timeInYellow):
+           self.event_queue = []
+           self.timers = []
+           self.x = _x
+           self.y = _y
+           self.timeInRed = _timeInRed
+           self.timeInGreen = _timeInGreen
+           self.timeInYellow = _timeInYellow
+           self.myTimer = self.createTimer("Timeout",self.timeInRed)
+   
+           self.estado_actual = None
+           self.transicion_a(self.estado_waitInRed)
+   
+       def createTimer(self,event,duration):
+           t = Timer(self, event, duration)
+           self.timers.append(t)
+           return t
+   
+       def post_event(self, ev):
+           self.event_queue.append(ev)
+   
+       def update(self):
+           # 1. Actualizar todos los timers internos automáticamente
+           for t in self.timers:
+               t.update()
+   
+           # 2. Procesar la cola de eventos resultante
+           while len(self.event_queue) > 0:
+               ev = self.event_queue.pop(0)
+               if self.estado_actual:
+                   self.estado_actual(ev)
+   
+       def transicion_a(self, nuevo_estado):
+           if self.estado_actual: self.estado_actual("EXIT")
+           self.estado_actual = nuevo_estado
+           self.estado_actual("ENTRY")
+   
+       def clear(self):
+           display.set_pixel(self.x,self.y,0)
+           display.set_pixel(self.x,self.y+1,0)
+           display.set_pixel(self.x,self.y+2,0)
+   
+       def estado_waitInRed(self, ev):
+           if ev == "ENTRY":
+               self.clear()
+               display.set_pixel(self.x,self.y,9)
+               self.myTimer.start(self.timeInRed)
+           if ev == "Timeout":
+               display.set_pixel(self.x,self.y,0)
+               self.transicion_a(self.estado_waitInGreen)
+   
+       def estado_waitInGreen(self, ev):
+           if ev == "ENTRY":
+               self.clear()
+               display.set_pixel(self.x,self.y+2,9)
+               self.myTimer.start(self.timeInGreen)
+   
+           if ev == "Timeout":
+               display.set_pixel(self.x,self.y+2,0)
+               self.transicion_a(self.estado_waitInYellow)
+   
+           if ev == "A":
+               self.transicion_a(self.estado_waitInYellow)
+           if ev == "B":
+               self.transicion_a(self.estado_nocturno)
+   
+       def estado_nocturno(self, ev):
+           if ev == "ENTRY":
+               self.clear()
+               display.set_pixel(self.x,self.y+1,9)
+               self.myTimer.start(self.timeInYellow)
+               
+           if ev == "Timeout":
+               if display.get_pixel(self.x,self.y+1) == 0:
+                   display.set_pixel(self.x,self.y+1,9)
+               else:
+                   display.set_pixel(self.x,self.y+1,0)
+               
+               self.myTimer.start(self.timeInYellow)
+   
+           if ev == "A":
+               self.transicion_a(self.estado_waitInYellow)
+           
+   
+       def estado_waitInYellow(self, ev):
+           if ev == "ENTRY":
+               self.clear()
+               display.set_pixel(self.x,self.y+1,9)
+               self.myTimer.start(self.timeInYellow)
+           if ev == "Timeout":
+               display.set_pixel(self.x,self.y+1,0)
+               self.transicion_a(self.estado_waitInRed)
+               if ev == "B":
+                   self.transicion_a(self.estado_nocturno)
+   
+   semaforo1 = Semaforo(0,0,2000,1000,500)
+   
+   while True:
+   
+       if button_a.was_pressed():
+           semaforo1.post_event("A")
+       if button_b.was_pressed():
+           semaforo1.post_event("B")
+           
+       
+       semaforo1.update()
+       utime.sleep_ms(20)
 ```
 ### Actividad 02
 main.py
@@ -178,8 +314,12 @@ FILL = make_fill_images()
 # un valor de 0 a 25
 ```
 
+
+## Bitácora de aplicación 
+
 ### Actividad 04
 
+sketch.js
 ``` js
 const TIMER_LIMITS = {
   min: 15,
@@ -237,6 +377,13 @@ class Temporizador extends FSMTask {
     }
   };
 
+  compararPassword(sequence, myPassword) {
+    for (let i = 0; i < sequence.length; i++) {
+      if (sequence[i] !== myPassword[i]) return false;
+    }
+    return true;
+  }
+
   estado_armed = (ev) => {
     if (ev === ENTRY) {
       this.myTimer.start();
@@ -253,23 +400,23 @@ class Temporizador extends FSMTask {
       this.myTimer.stop();
     }
 
-    if (ev == "S") {
+    if (ev === "S") {
       if (this.myTimer.active == false) {
         this.myTimer.start();
       } else {
         this.myTimer.stop();
       }
     }
-    
-    if (ev == "A" || ev == "B"){
+
+    if (ev === "A" || ev === "B") {
       this.sequence.push(ev);
-      if (this.sequence.length === 3){
-        if (this.sequence == this.myPassword){
-        this.transition.to(this.estado_config);
-        this.sequence.clear();
-        }else{
-        this.sequence.clear();
-      } 
+      if (this.sequence.length === 3) {
+        if (this.compararPassword(this.sequence, this.myPassword)) {
+          this.transitionTo(this.estado_config);
+          this.sequence = [];
+        } else {
+          this.sequence = [];
+        }
       }
     }
   };
@@ -287,6 +434,10 @@ let temporizador;
 const renderer = new Map();
 
 function setup() {
+  port = createSerial();
+  connectBtn = createButton("Connect to micro:bit");
+  connectBtn.position(windowWidth / 2, 600);
+  connectBtn.mousePressed(connectBtnClick);
   createCanvas(windowWidth, windowHeight);
   temporizador = new Temporizador(
     TIMER_LIMITS.min,
@@ -305,8 +456,27 @@ function setup() {
 }
 
 function draw() {
-  temporizador.update();
+ temporizador.update();
   renderer.get(temporizador.currentState)?.();
+
+  if (port.availableBytes() > 0) {
+    let dataRx = port.read(1);
+    if (dataRx == "A") {
+      console.log("A");
+      temporizador.postEvent("A");
+    } else if (dataRx == "B") {
+      console.log("B");
+      temporizador.postEvent("B");
+    } else if (dataRx == "S") {
+      console.log("S");
+      temporizador.postEvent("S");
+    }
+  }
+  if (!port.opened()) {
+    connectBtn.html("Connect to micro:bit");
+  } else {
+    connectBtn.html("Disconnect");
+  }
 }
 
 function drawConfig(val) {
@@ -355,12 +525,137 @@ function keyPressed() {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
+
+function connectBtnClick() {
+    if (!port.opened()) {
+        port.open('MicroPython', 115200);
+    } else {
+        port.close();
+    }
+}
 ```
 
+index.html
+``` js
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-## Bitácora de aplicación 
+    <title>Sketch</title>
 
+    <link rel="stylesheet" type="text/css" href="style.css">
 
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.js"></script>
+    <script src="https://unpkg.com/@gohai/p5.webserial@^1/libraries/p5.webserial.js"></script>
+  </head>
+
+  <body>
+    <script src="fsm.js"></script>
+    <script src="sketch.js"></script>
+  </body>
+</html>
+```
+
+fsm.js
+``` js
+const ENTRY = "ENTRY";
+const EXIT = "EXIT";
+
+class Timer {
+  constructor(owner, eventToPost, duration) {
+    this.owner = owner;
+    this.event = eventToPost;
+    this.duration = duration;
+    this.startTime = 0;
+    this.active = false;
+  }
+
+  start(newDuration = null) {
+    if (newDuration !== null) this.duration = newDuration;
+    this.startTime = millis();
+    this.active = true;
+  }
+
+  stop() {
+    this.active = false;
+  }
+
+  update() {
+    if (this.active && millis() - this.startTime >= this.duration) {
+      this.active = false;
+      this.owner.postEvent(this.event);
+    }
+  }
+}
+
+class FSMTask {
+  constructor() {
+    this.queue = [];
+    this.timers = [];
+    this.state = null;
+  }
+
+  postEvent(ev) {
+    this.queue.push(ev);
+  }
+
+  addTimer(event, duration) {
+    let t = new Timer(this, event, duration);
+    this.timers.push(t);
+    return t;
+  }
+
+  transitionTo(newState) {
+    if (this.state) this.state(EXIT);
+    this.state = newState;
+    this.state(ENTRY);
+  }
+
+  update() {
+    for (let t of this.timers) {
+      t.update();
+    }
+    while (this.queue.length > 0) {
+      let ev = this.queue.shift();
+      if (this.state) this.state(ev);
+    }
+  }
+}
+```
+style.css
+``` js
+html, body {
+  margin: 0;
+  padding: 0;
+}
+canvas {
+  display: block;
+}
+
+```
 
 ## Bitácora de reflexión
 
+### Actividad 05
+
+Código
+``` python
+from microbit import *
+import radio
+radio.config(group=67)
+
+radio.on()
+
+while True:
+
+    message = radio.receive()
+
+    if button_a.was_pressed():
+        radio.send('A')
+    if button_b.was_pressed():
+        radio.send('B')
+    if accelerometer.was_gesture("shake"):
+        radio.send('S')
+```
