@@ -124,9 +124,59 @@ $ node bridgeServer.js --device microbit
 
 ```
 
+Mísma secuencia pero más limpia
+``` Bash
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~
+$ mkdir sfi1v2JP
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~
+$ cd sfi1v2JP
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP
+$ git clone https://github.com/juanferfranco/sfi1-2026-20-u4-CaseStudy.git
+Cloning into 'sfi1-2026-20-u4-CaseStudy'...
+remote: Enumerating objects: 17, done.
+remote: Counting objects: 100% (17/17), done.
+remote: Compressing objects: 100% (15/15), done.
+remote: Total 17 (delta 0), reused 17 (delta 0), pack-reused 0 (from 0)
+Receiving objects: 100% (17/17), 10.65 KiB | 2.66 MiB/s, done.
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP
+$ ls
+sfi1-2026-20-u4-CaseStudy/
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP
+$ cd sfi1-2026-20-u4-CaseStudy/
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP/sfi1-2026-20-u4-CaseStudy (main)
+$ ls
+adapters/  bridgeClient.js  bridgeServer.js  fsm.js  index.html  jsconfig.json  package-lock.json  package.json  sketch.js  style.css
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP/sfi1-2026-20-u4-CaseStudy (main)
+$ code .
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP/sfi1-2026-20-u4-CaseStudy (main)
+$ npm install
+
+added 22 packages, and audited 23 packages in 531ms
+
+14 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1v2JP/sfi1-2026-20-u4-CaseStudy (main)
+$ node bridgeServer.js
+[2026-03-06T19:47:44.845Z] [INFO] WS listening on ws://127.0.0.1:8081 device=sim
+[2026-03-06T19:47:44.846Z] [INFO] [ADAPTER] Device Connected: sim connected
+```
+
+
+
 ## Bitácora de aplicación 
 
 
 
 ## Bitácora de reflexión
+
 
