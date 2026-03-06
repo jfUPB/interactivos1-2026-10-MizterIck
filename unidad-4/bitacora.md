@@ -4,12 +4,12 @@
 ### Actividad 01
 <img width="994" height="460" alt="image" src="https://github.com/user-attachments/assets/1e48705a-7a53-4665-9cba-98ad21600b8a" />````
 
-```
+``` bash
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~
-$ mkdir sfi1JP
+$ mkdir sfi1JP //crea carpeta
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~
-$ cd sfi1JP
+$ cd sfi1JP //ingresa la carpeta al sistema
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP
 $ git clone ^[[200~https://github.com/juanferfranco/sfi1-2026-20-u4-CaseStudy.git~
@@ -17,7 +17,7 @@ Cloning into 'sfi1-2026-20-u4-CaseStudy.git~'...
 fatal: protocol '?[200~https' is not supported
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP
-$ git clone https://github.com/juanferfranco/sfi1-2026-20-u4-CaseStudy.git
+$ git clone https://github.com/juanferfranco/sfi1-2026-20-u4-CaseStudy.git //clona un repositorio de github
 Cloning into 'sfi1-2026-20-u4-CaseStudy'...
 remote: Enumerating objects: 17, done.
 remote: Counting objects: 100% (17/17), done.
@@ -33,10 +33,10 @@ ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP
 $ cd ^C
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP
-$ cd sfi1-2026-20-u4-CaseStudy/
+$ cd sfi1-2026-20-u4-CaseStudy/ //ingresa a carpeta del repositorio clonado
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
-$ ls
+$ ls //muestra el interior de las carpetas
 adapters/  bridgeClient.js  bridgeServer.js  fsm.js  index.html  jsconfig.json  package-lock.json  package.json  sketch.js  style.css
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
@@ -75,7 +75,7 @@ $ ls
 adapters/  bridgeClient.js  bridgeServer.js  fsm.js  index.html  jsconfig.json  package-lock.json  package.json  sketch.js  style.css
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
-$ npm install
+$ npm install //instala lo necesario para crear el server
 
 added 22 packages, and audited 23 packages in 939ms
 
@@ -94,16 +94,16 @@ $ ls
 adapters/  bridgeClient.js  bridgeServer.js  fsm.js  index.html  jsconfig.json  node_modules/  package-lock.json  package.json  sketch.js  style.css
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
-$ node bridge
+$ node bridge //crea el bridge
 bridgeClient.js  bridgeServer.js
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
-$ node bridgeServer.js
+$ node bridgeServer.js //crea el servidor
 [2026-03-04T20:16:39.720Z] [INFO] WS listening on ws://127.0.0.1:8081 device=sim
 [2026-03-04T20:16:39.721Z] [INFO] [ADAPTER] Device Connected: sim connected
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
-$ code .
+$ code . //abro el directorio de trabajo
 
 ESTUDIANTES@DESKTOP-N4RMBH7 MINGW64 ~/sfi1JP/sfi1-2026-20-u4-CaseStudy (main)
 $ node bridgeServer.js
@@ -129,3 +129,4 @@ $ node bridgeServer.js --device microbit
 
 
 ## Bitácora de reflexión
+
