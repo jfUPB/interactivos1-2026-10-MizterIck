@@ -175,29 +175,56 @@ $ node bridgeServer.js
 
 ## Bitácora de aplicación 
 
+``` js
 const { SerialPort } = require("serialport");
 const BaseAdapter = require("./BaseAdapter");
 
 class ParseError extends Error { }
 
 function parseCsvLine(line) {
-  const values = line.trim().split("|");
-  if (values.length !== 6) throw new ParseError(`Expected 6 values, got ${values.length}`);
+  const trimmed = line.trim();
 
-  const x = Number(values[0]);
-  const y = Number(values[1]);
-  const btnA = String(values[2]).trim().toLowerCase();
-  const btnB = String(values[3]).trim().toLowerCase();
-  const chk = Number(values[4]);
+  // Verificar que empiece con $
+  if (!trimmed.startsWith("$")) {
+    throw new ParseError("Frame does not start with $");
+  }
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new ParseError("Invalid numeric data");
-  if (x < -2048 || x > 2047 || y < -2048 || y > 2047) throw new ParseError("Out of expected range");
-  if (!["true", "false"].includes(btnA) || !["true", "false"].includes(btnB)) throw new ParseError("Invalid button data");
+  // Quitar el $ y separ por Pipes
+  const values = trimmed.slice(1).split("|");
 
-  return { x: x | 0, y: y | 0, btnA: btnA === "true", btnB: btnB === "true" };
+  if (values.length !== 6) {
+    throw new ParseError(`Expected 6 values, got ${values.length}`);
+  }
+
+  const x = Number(values[1].split(":")[1]);
+  const y = Number(values[2].split(":")[1]);
+  const btnA = Number(values[3].split(":")[1]);
+  const btnB = Number(values[4].split(":")[1]);
+  const chk = Number(values[5].split(":")[1]);
+
+  const calcChk = Math.abs(x) + Math.abs(y) + btnA + btnB;
+
+  if (calcChk !== chk) {
+    throw new ParseError("Checksum no coincide");
+  }
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new ParseError("Invalid numeric data");
+  }
+
+  if (x < -2048 || x > 2047 || y < -2048 || y > 2047) {
+    throw new ParseError("Out of expected range");
+  }
+
+  return {
+    x: x | 0,
+    y: y | 0,
+    btnA: btnA === 1,
+    btnB: btnB === 1
+  };
 }
 
-class MicrobitV2Adapter extends BaseAdapter {
+class MicrobitAsciiAdapter2 extends BaseAdapter {
   constructor({ path, baud = 115200, verbose = false } = {}) {
     super();
     this.path = path;
@@ -241,6 +268,7 @@ class MicrobitV2Adapter extends BaseAdapter {
         });
       });
     }
+
     this.port = null;
     this.buf = "";
     this.onDisconnected?.("serial closed");
@@ -305,10 +333,127 @@ class MicrobitV2Adapter extends BaseAdapter {
   }
 }
 
-module.exports = MicrobitV2Adapter;
+module.exports = MicrobitAsciiAdapter2;
 
+```
+### Cambios respecto el código original
+- Nuevo método de parsing
+  
+Se usaba:
+``` js
+line.split(",")
+```
+
+Ahora se usa:
+``` js
+line.split("|")
+```
+
+- Validación de inicio de trama
+
+Se añadió verificación del $:
+``` js
+if (!trimmed.startsWith("$"))
+  throw new ParseError("Frame does not start with $");
+```
+
+Acto seguido se elimina el símbolo
+``` js
+const body = trimmed.slice(1);
+```
+
+- Extracción por claves (T, X, Y, A, B, CHK)
+Antes los datos venían en posiciones fijas.
+
+Ahora cada campo tiene etiqueta:
+| Campo | Significado    |
+| ----- | -------------- |
+| T     | Tiempo         |
+| X     | Acelerómetro X |
+| Y     | Acelerómetro Y |
+| A     | Botón A        |
+| B     | Botón B        |
+| CHK   | Checksum       |
+
+- Conversión de botones
+
+Antes venían como texto:
+``` js
+"true" / "false"
+```
+
+Ahora llegan como números:
+``` js
+btnA === 1
+btnB === 1
+```
+
+- Implementación de verificación de checksum
+
+Se calcula:
+``` js
+const calcChk = Math.abs(x) + Math.abs(y) + btnA + btnB;
+```
+
+Y se compara con el valor recibido:
+``` js
+if (calcChk !== chk)
+  throw new ParseError("Checksum mismatch");
+```
+
+### Adición a bridgeServer.js
+Agregamos esta linea para que el bridgeServer reciba datos en el nuevo formato desde el nuevo adaptador
+``` js
+const MicrobitV2Adapter = require("./adapters/MicrobitV2Adapter");
+```
+
+### Adición a sketch.js
+Cambiamos los controles de PC a unos de Micro:bit
+
+``` js
+function drawRunning() {
+    let mb = painter.rxData;
+
+    if (!mb.ready) return;
+
+    // Dibujar SOLO mientras botón A esté presionado
+    if (mb.btnA) {
+
+        push();
+        translate(width / 2, height / 2);
+
+        // Resolución del polígono ← eje Y del acelerómetro
+        let circleResolution = int(map(mb.y, 0, height, 2, 10));
+
+        // Radio ← eje X del acelerómetro
+        let radius = mb.x - width / 2;
+
+        let angle = TAU / circleResolution;
+
+        // Relleno activado con botón B
+        if (mb.btnB) {
+            fill(34, 45, 122, 50);
+        } else {
+            noFill();
+        }
+
+        beginShape();
+        for (let i = 0; i <= circleResolution; i++) {
+            let x = cos(angle * i) * radius;
+            let y = sin(angle * i) * radius;
+            vertex(x, y);
+        }
+        endShape();
+
+        pop();
+    }
+}
+
+```
 
 ## Bitácora de reflexión
 
+``` js
+```
 
 
