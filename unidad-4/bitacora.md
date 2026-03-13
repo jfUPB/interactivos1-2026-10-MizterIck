@@ -450,10 +450,22 @@ function drawRunning() {
 }
 
 ```
+Código MicroBit
+``` python
+from microbit import *
 
-## Bitácora de reflexión
+uart.init(115200)
+display.set_pixel(0,0,9)
 
-``` js
+while True:
+    xValue = accelerometer.get_x()
+    yValue = accelerometer.get_y()
+    aState = button_a.is_pressed()
+    bState = button_b.is_pressed()
+    data = "{},{},{},{}\n".format(xValue, yValue, aState,bState)
+    uart.write(data)
+    sleep(100) # Envia datos a 10 Hz
 ```
 
+## Bitácora de reflexión
 
