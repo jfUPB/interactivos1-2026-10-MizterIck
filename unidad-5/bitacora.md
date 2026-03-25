@@ -71,7 +71,153 @@ while True:
     
     sleep(100) # Envia datos a 10 Hz
 ```
+Borré descuidadamente la totalidad de la función Parse original para acoplarme al formato de binario y dentro de esta función yo tenía el checksum, así que al no tener un checksum como tal en visual studio, me generaba de manera continua trama corrupta, al darme cuenta recuperé la linea de código del checksum y arreglé el problema
+<img width="975" height="387" alt="image" src="https://github.com/user-attachments/assets/51a24aa6-6c75-4448-8e48-98430eb441b2" />
+
+AdaptadorBinario
+
 ``` js
+const { SerialPort } = require("serialport");
+const BaseAdapter = require("./BaseAdapter");
+
+const x = Number(values[1].split(":")[1]);
+const y = Number(values[2].split(":")[1]);
+const btnA = Number(values[3].split(":")[1]);
+const btnB = Number(values[4].split(":")[1]);
+const chk = Number(values[5].split(":")[1]);
+
+const calcChk = Math.abs(x) + Math.abs(y) + btnA + btnB;
+
+if (calcChk !== chk) {
+    throw new ParseError("Checksum no coincide");
+  }
+
+class MicrobitBinaryAdapter extends BaseAdapter {
+  constructor({ path, baud = 115200, verbose = false } = {}) {
+    super();
+    this.path = path;
+    this.baud = baud;
+    this.port = null;
+    this.buf = Buffer.alloc(0);
+    this.verbose = verbose;
+  }
+
+  async connect() {
+    if (this.connected) return;
+    if (!this.path) throw new Error("serialPort is required for microbit device mode");
+
+    this.port = new SerialPort({
+      path: this.path,
+      baudRate: this.baud,
+      autoOpen: false,
+    });
+
+    await new Promise((resolve, reject) => {
+      this.port.open((err) => (err ? reject(err) : resolve()));
+    });
+
+    this.connected = true;
+    this.onConnected?.(`serial open ${this.path} @${this.baud}`);
+
+    this.port.on("data", (chunk) => this._onChunk(chunk));
+    this.port.on("error", (err) => this._fail(err));
+    this.port.on("close", () => this._closed());
+  }
+
+  async disconnect() {
+    if (!this.connected) return;
+    this.connected = false;
+
+    if (this.port && this.port.isOpen) {
+      await new Promise((resolve, reject) => {
+        this.port.close((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    this.port = null;
+    this.buf = Buffer.alloc(0);
+    this.onDisconnected?.("serial closed");
+  }
+
+  getConnectionDetail() {
+    return `serial open ${this.path}`;
+  }
+
+ _onChunk(chunk) {
+  // Asegura que buf sea un Buffer
+  if (!this.buf) this.buf = Buffer.alloc(0);
+
+  // Concatenar buffers
+  this.buf = Buffer.concat([this.buf, chunk]);
+
+  let idx;
+  while ((idx = this.buf.indexOf(0x0A)) >= 0) { // '\n'
+    // Extraer línea (sin incluir \n)
+    const lineBuf = this.buf.subarray(0, idx);
+    this.buf = this.buf.subarray(idx + 1);
+
+    if (lineBuf.length === 0) continue;
+
+    try {
+      // Convertir SOLO la línea actual a string
+      const line = lineBuf.toString("utf8").trim();
+      if (!line) continue;
+
+      const parsed = parseCsvLine(line);
+      this.onData?.(parsed);
+    } catch (e) {
+      if (e instanceof ParseError) {
+        if (this.verbose) {
+          console.log("Bad data:", e.message, "raw:", lineBuf);
+        }
+      } else {
+        this._fail(e);
+      }
+    }
+  }
+
+  // Protección contra crecimiento infinito
+  if (this.buf.length > 4096) {
+    this.buf = Buffer.alloc(0);
+  }
+}
+
+  
+
+  _fail(err) {
+    this.onError?.(String(err?.message || err));
+    this.disconnect();
+  }
+
+  _closed() {
+    if (!this.connected) return;
+    this.connected = false;
+    this.port = null;
+    this.buf = Buffer.alloc(0);
+    this.onDisconnected?.("serial closed (event)");
+  }
+
+  async writeLine(line) {
+    if (!this.port || !this.port.isOpen) return;
+    await new Promise((resolve, reject) => {
+      this.port.write(line, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  async handleCommand(cmd) {
+    if (cmd?.cmd === "setLed") {
+      const x = Math.max(0, Math.min(4, Math.trunc(cmd.x)));
+      const y = Math.max(0, Math.min(4, Math.trunc(cmd.y)));
+      const v = Math.max(0, Math.min(9, Math.trunc(cmd.value)));
+      await this.writeLine(`LED,${x},${y},${v}\n`);
+    }
+  }
+}
+
+module.exports = MicrobitBinaryAdapter;
 
 ```
 ## Bitácora de reflexión
