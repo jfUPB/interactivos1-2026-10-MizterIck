@@ -80,18 +80,6 @@ AdaptadorBinario
 const { SerialPort } = require("serialport");
 const BaseAdapter = require("./BaseAdapter");
 
-const x = Number(values[1].split(":")[1]);
-const y = Number(values[2].split(":")[1]);
-const btnA = Number(values[3].split(":")[1]);
-const btnB = Number(values[4].split(":")[1]);
-const chk = Number(values[5].split(":")[1]);
-
-const calcChk = Math.abs(x) + Math.abs(y) + btnA + btnB;
-
-if (calcChk !== chk) {
-    throw new ParseError("Checksum no coincide");
-  }
-
 class MicrobitBinaryAdapter extends BaseAdapter {
   constructor({ path, baud = 115200, verbose = false } = {}) {
     super();
@@ -147,45 +135,69 @@ class MicrobitBinaryAdapter extends BaseAdapter {
   }
 
  _onChunk(chunk) {
-  // Asegura que buf sea un Buffer
-  if (!this.buf) this.buf = Buffer.alloc(0);
+    this.buf = Buffer.concat([this.buf, chunk]);
 
-  // Concatenar buffers
-  this.buf = Buffer.concat([this.buf, chunk]);
+    while (this.buf.length >= 8) {
 
-  let idx;
-  while ((idx = this.buf.indexOf(0x0A)) >= 0) { // '\n'
-    // Extraer línea (sin incluir \n)
-    const lineBuf = this.buf.subarray(0, idx);
-    this.buf = this.buf.subarray(idx + 1);
+      // Buscar header 0xAA
+      const start = this.buf.indexOf(0xAA);
 
-    if (lineBuf.length === 0) continue;
+      if (start === -1) {
+        // No hay header, limpiar buffer
+        this.buf = Buffer.alloc(0);
+        return;
+      }
 
-    try {
-      // Convertir SOLO la línea actual a string
-      const line = lineBuf.toString("utf8").trim();
-      if (!line) continue;
+      // Si no hay suficientes bytes aún
+      if (this.buf.length < start + 8) {
+        return;
+      }
 
-      const parsed = parseCsvLine(line);
-      this.onData?.(parsed);
-    } catch (e) {
-      if (e instanceof ParseError) {
-        if (this.verbose) {
-          console.log("Bad data:", e.message, "raw:", lineBuf);
+      const packet = this.buf.slice(start, start + 8);
+
+      // Remover paquete del buffer
+      this.buf = this.buf.slice(start + 8);
+
+      try {
+        const parsed = this._parsePacket(packet);
+        if (parsed) {
+          this.onData?.(parsed);
         }
-      } else {
-        this._fail(e);
+      } catch (e) {
+        if (this.verbose) {
+          console.log("Bad binary packet:", e.message, packet);
+        }
       }
     }
   }
-
-  // Protección contra crecimiento infinito
-  if (this.buf.length > 4096) {
-    this.buf = Buffer.alloc(0);
-  }
-}
-
   
+  _parsePacket(packet) {
+    // packet[0] = 0xAA
+
+    const x = packet.readInt16BE(1);
+    const y = packet.readInt16BE(3);
+    const btnA = packet[5];
+    const btnB = packet[6];
+    const chk = packet[7];
+
+    // Calcular checksum
+    let calc = 0;
+    for (let i = 1; i <= 6; i++) {
+      calc += packet[i];
+    }
+    calc = calc % 256;
+
+    if (calc !== chk) {
+      throw new Error("Checksum mismatch");
+    }
+
+    return {
+      x: x,
+      y: y,
+      btnA: btnA === 1,
+      btnB: btnB === 1
+    };
+  }
 
   _fail(err) {
     this.onError?.(String(err?.message || err));
@@ -218,6 +230,7 @@ class MicrobitBinaryAdapter extends BaseAdapter {
 }
 
 module.exports = MicrobitBinaryAdapter;
+
 
 ```
 ## Bitácora de reflexión
