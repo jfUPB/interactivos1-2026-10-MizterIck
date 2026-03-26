@@ -17,60 +17,13 @@
 ## Bitácora de aplicación 
 ### Actividad 2
 
+Procedimiento:
+
+Resultado:
 <img width="1910" height="933" alt="image" src="https://github.com/user-attachments/assets/8b8581e9-eb2d-45f1-841b-a4533192de4a" />
 
-Microbit
+Problematicas:
 
-``` python
-
-from microbit import *
-
-uart.init(115200)
-display.set_pixel(0,0,9)
-
-HEADER = 0xAA
-
-def int16_to_bytes(value):
-    # convertir enteros con signos a 2 bytes big endian
-
-    if value < 0:
-        value = 65536 + value
-        
-    high = (value >> 8) & 0xFF
-    low = value & 0xFF
-
-    return high, low
-
-while True:
-    
-    xValue = accelerometer.get_x()
-    yValue = accelerometer.get_y()
-
-    if xValue < -2048:
-        xValue = -2048
-    if xValue > 2047:
-        xValue = 2047
-
-    if yValue < -2048:
-        yValue = -2048
-    if yValue > 2047:
-        yValue = 2047
-    
-    aState = 1 if button_a.is_pressed() else 0
-    bState = 1 if button_b.is_pressed() else 0
-
-    #convertir X y Y a 2 bytes cada uno
-    xHigh, xLow = int16_to_bytes(xValue)
-    yHigh, yLow = int16_to_bytes(yValue)
-    
-    checksum = (xHigh + xLow + yHigh + yLow + aState + bState) % 256
-    
-    packet = bytes([HEADER,xHigh,xLow,yHigh,yLow,aState,bState,checksum])
-    
-    uart.write(packet)
-    
-    sleep(100) # Envia datos a 10 Hz
-```
 Borré descuidadamente la totalidad de la función Parse original para acoplarme al formato de binario y dentro de esta función yo tenía el checksum, así que al no tener un checksum como tal en visual studio, me generaba de manera continua trama corrupta, al darme cuenta recuperé la linea de código del checksum y arreglé el problema
 <img width="975" height="387" alt="image" src="https://github.com/user-attachments/assets/51a24aa6-6c75-4448-8e48-98430eb441b2" />
 
@@ -232,5 +185,58 @@ class MicrobitBinaryAdapter extends BaseAdapter {
 module.exports = MicrobitBinaryAdapter;
 
 
+```
+
+Microbit
+
+``` python
+
+from microbit import *
+
+uart.init(115200)
+display.set_pixel(0,0,9)
+
+HEADER = 0xAA
+
+def int16_to_bytes(value):
+    # convertir enteros con signos a 2 bytes big endian
+
+    if value < 0:
+        value = 65536 + value
+        
+    high = (value >> 8) & 0xFF
+    low = value & 0xFF
+
+    return high, low
+
+while True:
+    
+    xValue = accelerometer.get_x()
+    yValue = accelerometer.get_y()
+
+    if xValue < -2048:
+        xValue = -2048
+    if xValue > 2047:
+        xValue = 2047
+
+    if yValue < -2048:
+        yValue = -2048
+    if yValue > 2047:
+        yValue = 2047
+    
+    aState = 1 if button_a.is_pressed() else 0
+    bState = 1 if button_b.is_pressed() else 0
+
+    #convertir X y Y a 2 bytes cada uno
+    xHigh, xLow = int16_to_bytes(xValue)
+    yHigh, yLow = int16_to_bytes(yValue)
+    
+    checksum = (xHigh + xLow + yHigh + yLow + aState + bState) % 256
+    
+    packet = bytes([HEADER,xHigh,xLow,yHigh,yLow,aState,bState,checksum])
+    
+    uart.write(packet)
+    
+    sleep(100) # Envia datos a 10 Hz
 ```
 ## Bitácora de reflexión
