@@ -19,12 +19,114 @@
 
 Procedimiento:
 
+Primeramente las bases conceptuales sobre las que se hicieron los cambios al código fueron las siguientes:
+
+| Concepto    | ASCII V2  | Binario          |
+| ----------- | --------- | ---------------- |
+| Entrada     | Texto     | Bytes            |
+| Buffer      | String    | Buffer           |
+| Delimitador | `\n`      | Header `0xAA`    |
+| Parsing     | `split()` | posiciones fijas (8 bytes) |
+| Lectura     | por texto | por bytes        |
+| Complejidad | Baja      | Media            |
+
+Ahora sí, lo primero que se hace es descomentar la linea de importación del adapter binario dentro del BridgeServer.
+
+En este caso, para hacer la menor cantidad de cambios posibles, solo hubo dos cambios importantes dentro de las funciones de la respectiva clase de cada adaptador:
+- _onChunk:
+
+Aquí se hacen cambios desde la lógica de que el binario no maneja strings, por lo tanto el tipo de buffer cambia a bytes y el uso de delimitador se transforma en buscar la cabeza del paquete "0xAA" y agregando un límite fijo de 8 bytes para leer (en caso de estar completos), acto seguido se extraen exactamente esos 8 bits, se procesan y despues se borran. Despues de esto se llama al _parsePacket().
+
+- _parsePacket():
+
+Este decodifica los datos de x, y, btnA, btnB y checksum en Big Endian y verifica si el checksum es correcto, de ser así entrega el objeto parseado.
+
+``` js
+ _onChunk(chunk) {
+    this.buf = Buffer.concat([this.buf, chunk]);
+
+    while (this.buf.length >= 8) {
+
+      // Buscar header 0xAA
+      const start = this.buf.indexOf(0xAA);
+
+      if (start === -1) {
+        // No hay header, limpiar buffer
+        this.buf = Buffer.alloc(0);
+        return;
+      }
+
+      // Si no hay suficientes bytes aún
+      if (this.buf.length < start + 8) {
+        return;
+      }
+
+      const packet = this.buf.slice(start, start + 8);
+
+      // Remover paquete del buffer
+      this.buf = this.buf.slice(start + 8);
+
+      try {
+        const parsed = this._parsePacket(packet);
+        if (parsed) {
+          this.onData?.(parsed);
+        }
+      } catch (e) {
+        if (this.verbose) {
+          console.log("Bad binary packet:", e.message, packet);
+        }
+      }
+    }
+  }
+  
+  _parsePacket(packet) {
+    // packet[0] = 0xAA
+
+    const x = packet.readInt16BE(1);
+    const y = packet.readInt16BE(3);
+    const btnA = packet[5];
+    const btnB = packet[6];
+    const chk = packet[7];
+
+    // Calcular checksum
+    let calc = 0;
+    for (let i = 1; i <= 6; i++) {
+      calc += packet[i];
+    }
+    calc = calc % 256;
+
+    if (calc !== chk) {
+      throw new Error("Checksum mismatch");
+    }
+
+    return {
+      x: x,
+      y: y,
+      btnA: btnA === 1,
+      btnB: btnB === 1
+    };
+  }
+```
+
+Adicionalmente de forma global para la estructura del Adaptador binario, se debe cambiar la cualquier linea:
+``` js
+    this.buf = "";
+```
+
+por una
+
+``` js
+    this.buf = Buffer.alloc(0);
+```
+
+Esto ya que la primera está adaptada para que el buffer sean strings y no bytes como la segunda.
+
 Resultado:
 <img width="1910" height="933" alt="image" src="https://github.com/user-attachments/assets/8b8581e9-eb2d-45f1-841b-a4533192de4a" />
 
 Problematicas:
 
-Borré descuidadamente la totalidad de la función Parse original para acoplarme al formato de binario y dentro de esta función yo tenía el checksum, así que al no tener un checksum como tal en visual studio, me generaba de manera continua trama corrupta, al darme cuenta recuperé la linea de código del checksum y arreglé el problema
+Borré descuidadamente la totalidad de la función Parse original para acoplarme al formato de binario y dentro de esta función yo tenía el checksum, así que al no tener un checksum como tal en visual studio, me generaba de manera continua trama corrupta, al darme cuenta recuperé la linea de código del checksum, para que funcionara adecuadamente la ubiqué dentro de la nueva funcion "_parsepacket" y la adapté al método binario.
 <img width="975" height="387" alt="image" src="https://github.com/user-attachments/assets/51a24aa6-6c75-4448-8e48-98430eb441b2" />
 
 AdaptadorBinario
