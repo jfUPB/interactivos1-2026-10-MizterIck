@@ -10,40 +10,15 @@ Al igual que en las anteriores sesiones, lo primero que hay que hacer es crear u
 StrudelAdapter
 
 ``` js
-// adapters/StrudelAdapter.js
-//
-// Responsabilidad ÚNICA: recibir mensajes crudos de Strudel
-// vía WebSocket, validar su estructura mínima y entregarlos
-// al bridge con tipos garantizados.
-//
-// Este adapter NO decide:
-//   - qué familia sonora es un sonido
-//   - qué duración visual corresponde a un delta
-//   - cómo se interpreta musicalmente ningún campo
-//
-// Contrato de salida hacia bridgeServer:
-//   {
-//     s:         string,   — nombre del sonido tal como viene de Strudel
-//     note:      number | null,
-//     freq:      number | null,
-//     delta:     number,   — duración en la unidad que Strudel usa (ciclos)
-//     gain:      number,   — 0 a 1, clampeado
-//     timestamp: number,   — ms epoch
-//   }
-
 const { WebSocketServer } = require("ws");
 const BaseAdapter = require("./BaseAdapter");
 
 class StrudelAdapter extends BaseAdapter {
   constructor({ port = 8080, verbose = false } = {}) {
     super();
-    this.port = port;
+    this.port    = port;
     this.verbose = verbose;
-    this._wss = null;
-  }
-
-  getConnectionDetail() {
-    return `strudel ws-server :${this.port}`;
+    this._wss    = null;
   }
 
   async connect() {
@@ -53,20 +28,18 @@ class StrudelAdapter extends BaseAdapter {
 
     this._wss.on("listening", () => {
       this.connected = true;
-      this.onConnected?.(`strudel WS server listening on :${this.port}`);
+      this.onConnected?.(`strudel ws escuchando en :${this.port}`);
     });
 
     this._wss.on("connection", (ws) => {
-      if (this.verbose) console.log("[StrudelAdapter] Strudel client connected");
-      ws.on("message", (raw) => this._handleRaw(raw));
-      ws.on("close",   ()    => {
-        if (this.verbose) console.log("[StrudelAdapter] Strudel client disconnected");
-      });
+      if (this.verbose) console.log("[StrudelAdapter] Strudel conectado");
+
+
+      ws.on("message", (raw) => this._onMessage(raw.toString("utf8")));
+      ws.on("error",   (err) => this._fail(err));
     });
 
-    this._wss.on("error", (err) => {
-      this.onError?.(String(err?.message ?? err));
-    });
+    this._wss.on("error", (err) => this._fail(err));
   }
 
   async disconnect() {
@@ -74,73 +47,93 @@ class StrudelAdapter extends BaseAdapter {
     this.connected = false;
     await new Promise((resolve) => this._wss.close(resolve));
     this._wss = null;
-    this.onDisconnected?.("strudel WS server closed");
+    this.onDisconnected?.("strudel ws cerrado");
   }
 
-  _handleRaw(raw) {
-    let msg;
+  getConnectionDetail() {
+    return `strudel ws :${this.port}`;
+  }
+
+  _onMessage(raw) {
+    let parsed;
     try {
-      msg = JSON.parse(raw.toString("utf8"));
-    } catch {
-      if (this.verbose) console.warn("[StrudelAdapter] JSON inválido:", raw.toString("utf8").slice(0, 80));
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      if (this.verbose) console.log("[StrudelAdapter] JSON inválido:", raw);
       return;
     }
 
-    const validated = this._validate(msg);
-    if (!validated) return;
+    const normalized = this._normalize(parsed);
 
-    this.onData?.(validated);
+    if (!normalized) return;
+
+
+    this.onData?.(normalized);
   }
 
-_validate(msg) {
-    const ev = msg?.value ?? msg;
-    if (!ev || typeof ev !== "object") return null;
 
-    if (!ev.s) return null;
+  _normalize(msg) {
+    const args   = msg.args ?? [];
+    const params = {};
+    for (let i = 0; i + 1 < args.length; i += 2) {
+      params[args[i]] = args[i + 1];
+    }
+
+    // Sin campo 's' no hay sonido; descartamos el evento.
+    if (!params.s) return null;
+
 
     return {
-      s: ev.s,
-      delta: typeof ev.delta === "number" ? ev.delta : 0.25,
-      gain: typeof ev.gain === "number"
-        ? Math.max(0, Math.min(1, ev.gain))
-        : 1,
-      timestamp: typeof ev.timestamp === "number"
-        ? ev.timestamp
-        : Date.now(),
+      type:      "strudel",
+      timestamp: msg.timestamp ?? Date.now(),
+      payload: {
+        eventType: "noteEvent",
+        s:         params.s,
+        bank:      params.bank  ?? null,
+        delta:     params.delta ?? 0.5,
+        cycle:     params.cycle ?? 0,
+        cps:       params.cps   ?? 0.5,
+      },
     };
   }
+
+  _fail(err) {
+    this.onError?.(String(err?.message || err));
+    this.disconnect();
+  }
+
+  async handleCommand(_cmd) {}
 }
 
 module.exports = StrudelAdapter;
 ``` 
 
+Para el bridgeServer al igual que en las anteriores sesiones se modifica para registrar dentro el nuevo adapter y para que a la hora de ejecutar todo se conecte al dispositivo correcto
+
+``` js
+const StrudelAdapter = require("./adapters/StrudelAdapter");
+
+const STRUDEL_PORT = parseInt(getArg("strudelPort", "8080"), 10);
+```
+
+Dentro de adapter.onData también se agrega lo siguiente para que en caso de que se utilice el strudel este reenvie el dato ya normalizado
+
+``` js
+adapter.onData = (d) => {
+    if (d.type === "strudel") {
+      broadcast(wss, d); 
+      return;
+    }
+```
 bridgeServer
 
 ``` js
-
-//   Uso:
-//     node bridgeServer.js --device sim --wsPort 8081 --hz 30
-//     node bridgeServer.js --device microbit --wsPort 8081 --serialPort COM5 --baud 115200
-
-//   WS contract:
-//    * bridge To client:
-//        {type:"status", state:"ready|connected|disconnected|error", detail:"..."}
-//        {type:"microbit", x:int, y:int, btnA:bool, btnB:bool, t:ms}
-//    * client To bridge:
-//        {cmd:"connect"} | {cmd:"disconnect"}
-//        {cmd:"setSimHz", hz:30}
-//        {cmd:"setLed", x:2, y:3, value:9}
-
-
 const { WebSocketServer } = require("ws");
 const { SerialPort } = require("serialport");
 const SimAdapter = require("./adapters/SimAdapter");
-const MicrobitAsciiAdapter = require("./adapters/MicrobitASCIIAdapter");
 const MicrobitV2Adapter = require("./adapters/MicrobitV2Adapter");
-
 const MicrobitBinaryAdapter = require("./adapters/MicrobitBinaryAdapter");
 const StrudelAdapter = require("./adapters/StrudelAdapter");
-
 
 const log = {
   info: (...args) => console.log(`[${new Date().toISOString()}] [INFO]`, ...args),
@@ -148,24 +141,17 @@ const log = {
   error: (...args) => console.error(`[${new Date().toISOString()}] [ERROR]`, ...args)
 };
 
-
 function getArg(name, def = null) {
   const i = process.argv.indexOf(`--${name}`);
   if (i >= 0 && i + 1 < process.argv.length) return process.argv[i + 1];
   return def;
 }
 
-function hasFlag(name) {
-  return process.argv.includes(`--${name}`);
-}
-
+function hasFlag(name) { return process.argv.includes(`--${name}`); }
 function nowMs() { return Date.now(); }
 
 function safeJsonParse(s) {
-  try {
-    return JSON.parse(s);
-
-  } catch (e) {
+  try { return JSON.parse(s); } catch (e) {
     log.warn("Failed to parse JSON: ", s, e);
     return null;
   }
@@ -190,39 +176,27 @@ const SIM_HZ = parseInt(getArg("hz", "30"), 10);
 const VERBOSE = hasFlag("verbose");
 const STRUDEL_PORT = parseInt(getArg("strudelPort", "8080"), 10);
 
-
 async function findMicrobitPort() {
   const ports = await SerialPort.list();
-  const microbit = ports.find(p =>
-    p.vendorId && parseInt(p.vendorId, 16) === 0x0D28
-  );
+  const microbit = ports.find(p => p.vendorId && parseInt(p.vendorId, 16) === 0x0D28);
   return microbit?.path ?? null;
 }
 
 async function createAdapter() {
   if (DEVICE === "microbit") {
     const path = SERIAL_PATH ?? await findMicrobitPort();
-    if (!path) {
-      log.error("micro:bit not found. Use --serialPort to specify manually.");
-      process.exit(1);
-    }
+    if (!path) { log.error("micro:bit not found."); process.exit(1); }
     log.info(`micro:bit found at ${path}`);
     return new MicrobitV2Adapter({ path, baud: BAUD, verbose: VERBOSE });
   }
-
   if (DEVICE === "microbit-bin") {
-     const path = SERIAL_PATH ?? await findMicrobitPort();
-     if (!path) {
-       log.error("micro:bit not found. Use --serialPort to specify manually.");
-       process.exit(1);
-     }
-     return new MicrobitBinaryAdapter({ path, baud: BAUD });
-   }
-
-     if (DEVICE === "strudel") {
+    const path = SERIAL_PATH ?? await findMicrobitPort();
+    if (!path) { log.error("micro:bit not found."); process.exit(1); }
+    return new MicrobitBinaryAdapter({ path, baud: BAUD });
+  }
+  if (DEVICE === "strudel") {
     return new StrudelAdapter({ port: STRUDEL_PORT, verbose: VERBOSE });
   }
-
   return new SimAdapter({ hz: SIM_HZ });
 }
 
@@ -247,40 +221,29 @@ async function main() {
     status(wss, "error", detail);
   };
 
+
   adapter.onData = (d) => {
-    if (DEVICE === "strudel") {
-      broadcast(wss, {
-      type: "strudel",
-      timestamp: d.timestamp,
-      payload: {
-        s: d.s,
-        delta: d.delta,
-        gain: d.gain,
-      },
-    });
-  } else {
-      broadcast(wss, {
-        type: "microbit",
-        x:    d.x,
-        y:    d.y,
-        btnA: !!d.btnA,
-        btnB: !!d.btnB,
-        t:    nowMs(),
-      });
+    if (d.type === "strudel") {
+      broadcast(wss, d); 
+      return;
     }
-  };
+
+    broadcast(wss, {
+      type: "microbit",
+      x: d.x,
+      y: d.y,
+      btnA: !!d.btnA,
+      btnB: !!d.btnB,
+      t: nowMs(),
+    });
+  }
 
   status(wss, "ready", `bridge up (${DEVICE})`);
 
   wss.on("connection", (ws, req) => {
     log.info(`[NETWORK] Remote Client connected from ${req.socket.remoteAddress}. Total clients: ${wss.clients.size}`);
-
     const state = adapter.connected ? "connected" : "ready";
-
-    const detail = adapter.connected
-      ? adapter.getConnectionDetail()
-      : `bridge (${DEVICE})`;
-
+    const detail = adapter.connected ? adapter.getConnectionDetail() : `bridge (${DEVICE})`;
     ws.send(JSON.stringify({ type: "status", state, detail, t: nowMs() }));
 
     ws.on("message", async (raw) => {
@@ -289,16 +252,12 @@ async function main() {
 
       if (msg.cmd === "connect") {
         log.info(`[NETWORK] Client requested adapter connect`);
-
         if (adapter.connected) {
           log.info(`[HW-POLICY] Adapter already open. Sending current status to incoming client.`);
           ws.send(JSON.stringify({ type: "status", state: "connected", detail: adapter.getConnectionDetail(), t: nowMs() }));
           return;
         }
-        
-        try {
-          await adapter.connect();
-        } catch (e) {
+        try { await adapter.connect(); } catch (e) {
           const detail = `connect failed: ${e.message || e}`;
           log.error(`[ADAPTER] ` + detail);
           status(wss, "error", detail);
@@ -313,10 +272,7 @@ async function main() {
           ws.send(JSON.stringify({ type: "status", state: "disconnected", detail: "logical disconnect only", t: nowMs() }));
           return;
         }
-        
-        try {
-          await adapter.disconnect();
-        } catch (e) {
+        try { await adapter.disconnect(); } catch (e) {
           const detail = `disconnect failed: ${e.message || e}`;
           log.error(`[ADAPTER] ` + detail);
           status(wss, "error", detail);
@@ -332,9 +288,7 @@ async function main() {
       }
 
       if (msg.cmd === "setLed") {
-        try {
-          await adapter.handleCommand?.(msg);
-        } catch (e) {
+        try { await adapter.handleCommand?.(msg); } catch (e) {
           const detail = `command failed: ${e.message || e}`;
           log.error(`[ADAPTER] ` + detail);
           status(wss, "error", detail);
@@ -363,6 +317,15 @@ main().catch((e) => {
 });
 ```
 
+Dentro de bridgeClient se agrega únicamente una línea para que los datos del type "strudel" pasen sin problema
+
+``` js
+  if (msg.type === "strudel") {
+        this._onData?.(msg);
+        return;
+      }
+```
+
 bridgeClient
 
 ``` js
@@ -386,7 +349,6 @@ class BridgeClient {
   onConnect(callback) { this._onConnect = callback; }
   onDisconnect(callback) { this._onDisconnect = callback; }
   onStatus(callback) { this._onStatus = callback; }
-  onStrudel(callback) { this._onStrudel = callback; }
 
 
   open() {
@@ -406,7 +368,6 @@ class BridgeClient {
     };
 
     this._ws.onmessage = (event) => {
-      // Esperamos JSON normalizado desde el bridge
       let msg;
       try {
         msg = JSON.parse(event.data);
@@ -415,9 +376,7 @@ class BridgeClient {
         return;
       }
 
-      // Convención mínima:
-      // - {type:"status", state:"...", detail:"..."}
-      // - {type:"microbit", x:..., y:..., btnA:..., btnB:...}
+
       if (msg.type === "status") {
         this._onStatus?.(msg);
 
@@ -438,13 +397,12 @@ class BridgeClient {
       }
 
       if (msg.type === "microbit") {
-        // payload ya normalizado
         this._onData?.(msg);
         return;
       }
 
             if (msg.type === "strudel") {
-        this._onStrudel?.(msg);
+        this._onData?.(msg);
         return;
       }
     };
@@ -480,353 +438,358 @@ class BridgeClient {
     this._onDisconnect?.();
   }
 }
-
 ```
 
 Sketch
 
 ``` js
-// ─── Constantes de eventos ────────────────────────────────────────────────────
 const EVENTS = {
-  CONNECT:      "CONNECT",
-  DISCONNECT:   "DISCONNECT",
-  DATA:         "DATA",
-  STRUDEL:      "STRUDEL",
-  KEY_PRESSED:  "KEY_PRESSED",
-  KEY_RELEASED: "KEY_RELEASED",
+    CONNECT: "CONNECT",
+    DISCONNECT: "DISCONNECT",
+    DATA: "DATA",
+    KEY_PRESSED: "KEY_PRESSED",
+    KEY_RELEASED: "KEY_RELEASED",
 };
 
-// ─── Dominio musical: lógica que antes estaba en el adapter ──────────────────
-
-// Familias sonoras: s crudo de Strudel → clave normalizada
-const SOUND_FAMILIES = {
-  bd: "bd",
-  sd: "sd",
-  cp: "sd",
-  hh: "hh",
-};
-
-
-function resolveFamily(s = "") {
-  const key = s.toLowerCase();
-  return SOUND_FAMILIES[key] ?? "other";
-}
-
-
-// Conversión de delta (ciclos) a duración visual (ms)
-// Decisión visual: 1 ciclo = 4 beats a 120 BPM = 2000 ms
-// Factor 0.4: la forma visual dura menos que el evento musical
-const BPM          = 120;
-const MS_PER_CYCLE = (60 / BPM) * 4 * 1000;
-
-function deltaToMs(delta) {
-  return Math.max(80, delta * MS_PER_CYCLE * 0.4);
-}
-
-// Mapa de familia sonora → color visual [r, g, b]
-const SOUND_COLORS = {
-  bd:    [220,  60,  30],  // kick   → rojo cálido
-  sd:    [ 30, 160, 220],  // snare  → azul frío
-  cp:    [ 30, 160, 220],  // clap   → igual que snare
-  hh:    [230, 200,  20],  // hihat  → amarillo
-  bass:  [140,  50, 200],  // bass   → violeta
-  synth: [ 20, 200, 140],  // synth  → verde-cyan
-  other: [180, 180, 180],  // resto  → gris
-};
-
-function colorForFamily(family) {
-  return SOUND_COLORS[family] ?? SOUND_COLORS.other;
-}
-
-// ─── FSMTask ──────────────────────────────────────────────────────────────────
 class PainterTask extends FSMTask {
-  constructor() {
-    super();
+    constructor() {
+        super();
 
-    this.c = color(181, 157, 0);
-    this.lineSize = 100;
-    this.clickPosX = 0;
-    this.clickPosY = 0;
+        this.c = color(181, 157, 0);
+        this.lineSize = 100;
+        this.angle = 0;
+        this.clickPosX = 0;
+        this.clickPosY = 0;
 
-    this.rxData = {
-      x: 0, y: 0,
-      btnA: false, btnB: false,
-      prevA: false, prevB: false,
-      ready: false,
+        this.rxData = {
+            x: 0,
+            y: 0,
+            btnA: false,
+            btnB: false,
+            prevA: false,
+            prevB: false,
+            ready: false
+        };
+
+        this.eventQueue = [];
+        this.activeAnimations = [];
+
+        this.mode = null; // "microbit" | "strudel"
+
+        this.transitionTo(this.estado_esperando);
+    }
+
+    update() {
+        super.update();
+        this._flushQueue();
+    }
+
+    _flushQueue() {
+        if (this.mode !== "strudel") return;
+
+        const now = Date.now();
+
+        this.eventQueue.sort((a, b) => a.timestamp - b.timestamp);
+
+        while (this.eventQueue.length > 0) {
+            const ev = this.eventQueue[0];
+
+            if (ev.timestamp <= now) {
+
+                const d = ev.payload;
+
+                this.activeAnimations.push({
+                    startTime: ev.timestamp,
+                    duration: d.delta * 1000,
+                    type: d.s,
+                    x: random(width * 0.2, width * 0.8),
+                    y: random(height * 0.2, height * 0.8),
+                    color: getColorForSound(d.s)
+                });
+
+                this.eventQueue.shift();
+
+            } else break;
+        }
+    }
+
+    estado_esperando = (ev) => {
+        if (ev.type === "ENTRY") {
+            cursor();
+            console.log("Waiting for connection...");
+        } 
+        else if (ev.type === EVENTS.CONNECT) {
+            this.transitionTo(this.estado_corriendo);
+        }
     };
 
-    // Cola de eventos musicales pendientes de activar
-    // Cada entrada: { triggerAt, s, delta, gain, note, freq }
-    this.strudelQueue = [];
+    estado_corriendo = (ev) => {
+        if (ev.type === "ENTRY") {
+            noCursor();
+            background(0);
 
-    // Hits activos que drawRunning lee para dibujar
-    this.activeHits = [];
+            console.log("Connected. Waiting for data...");
+        }
 
-    this.transitionTo(this.estado_esperando);
-  }
+        else if (ev.type === EVENTS.DISCONNECT) {
+            this.mode = null;
+            this.transitionTo(this.estado_esperando);
+        }
 
-  // ── Estados ────────────────────────────────────────────────────────────────
-  estado_esperando = (ev) => {
-    if (ev.type === "ENTRY") {
-      cursor();
-      console.log("Esperando conexión...");
-    } else if (ev.type === EVENTS.CONNECT) {
-      this.transitionTo(this.estado_corriendo);
+        else if (ev.type === EVENTS.DATA) {
+            this.updateLogic(ev.payload);
+        }
+
+        else if (ev.type === EVENTS.KEY_PRESSED) {
+            this.handleKeys(ev.keyCode, ev.key);
+        }
+
+        else if (ev.type === EVENTS.KEY_RELEASED) {
+            this.handleKeyRelease(ev.keyCode, ev.key);
+        }
+
+        else if (ev.type === "EXIT") {
+            cursor();
+        }
+    };
+
+    updateLogic(data) {
+
+
+        if (data.type === "strudel") {
+            this.mode = "strudel";
+            this.eventQueue.push(data);
+            return;
+        }
+
+        this.mode = "microbit";
+
+        this.rxData.ready = true;
+        this.rxData.x = map(data.x, -2048, 2047, 0, width);
+        this.rxData.y = map(data.y, -2048, 2047, 0, height);
+        this.rxData.btnA = data.btnA;
+        this.rxData.btnB = data.btnB;
+
+        if (this.rxData.btnA && !this.prevA) {
+            this.lineSize = random(50, 160);
+            this.clickPosX = this.rxData.x;
+            this.clickPosY = this.rxData.y;
+        }
+
+        if (!this.rxData.btnB && this.prevB) {
+            this.c = color(random(255), random(255), random(255), random(80, 100));
+        }
+
+        this.prevA = this.rxData.btnA;
+        this.prevB = this.rxData.btnB;
     }
-  };
-
-  estado_corriendo = (ev) => {
-    if (ev.type === "ENTRY") {
-      noCursor();
-      strokeWeight(0.75);
-      background(255);
-      this.rxData = {
-        x: 0, y: 0,
-        btnA: false, btnB: false,
-        prevA: false, prevB: false,
-        ready: false,
-      };
-      this.strudelQueue = [];
-      this.activeHits   = [];
-    }
-    else if (ev.type === EVENTS.DISCONNECT) {
-      this.transitionTo(this.estado_esperando);
-    }
-    else if (ev.type === EVENTS.DATA) {
-      this.updateLogic(ev.payload);
-    }
-    else if (ev.type === EVENTS.STRUDEL) {
-      this.updateStrudel(ev.payload);
-    }
-    else if (ev.type === EVENTS.KEY_PRESSED) {
-      this.handleKeys(ev.keyCode, ev.key);
-    }
-    else if (ev.type === EVENTS.KEY_RELEASED) {
-      this.handleKeyRelease(ev.keyCode, ev.key);
-    }
-    else if (ev.type === "EXIT") {
-      cursor();
-    }
-  };
-
-  // ── Lógica del acelerómetro ────────────────────────────────────────────────
-  updateLogic(data) {
-    this.rxData.ready = true;
-    this.rxData.x     = map(data.x, -2048, 2047, 0, width);
-    this.rxData.y     = map(data.y, -2048, 2047, 0, height);
-    this.rxData.btnA  = data.btnA;
-    this.rxData.btnB  = data.btnB;
-
-    if (this.rxData.btnA && !this.prevA) {
-      this.lineSize  = random(50, 160);
-      this.clickPosX = this.rxData.x;
-      this.clickPosY = this.rxData.y;
-      console.log("A pressed");
-    }
-
-    if (!this.rxData.btnB && this.prevB) {
-      this.c = color(random(255), random(255), random(255), random(80, 100));
-      console.log("B released");
-    }
-
-    this.prevA = this.rxData.btnA;
-    this.prevB = this.rxData.btnB;
-  }
-
-  // ── Lógica musical: encolar evento y traducir al dominio visual ────────────
-  // payload llega crudo desde el adapter: { s, note, freq, delta, gain, timestamp }
-  // Aquí vive toda la interpretación musical — no en el adapter ni en drawRunning
-updateStrudel(payload) {
-    const family = resolveFamily(payload.s);
-
-    this.strudelQueue.push({
-        triggerAt: payload.timestamp,
-        family,
-        delta: payload.delta,
-        gain: payload.gain,
-    });
-    }
-
-
-  // ── Tick: drenar cola temporal, activar hits ───────────────────────────────
-  // Llamado desde draw() antes de drawRunning — separado del renderizado
-  tickStrudel() {
-    const now = Date.now();
-
-    // Expirar hits viejos
-    this.activeHits = this.activeHits.filter(h => h.expiresAt > now);
-
-    // Activar eventos cuyo timestamp ya llegó
-    let i = 0;
-    while (i < this.strudelQueue.length) {
-      const ev = this.strudelQueue[i];
-
-      if (true) {
-        const [r, g, b]  = colorForFamily(ev.family);
-        const lifetimeMs = deltaToMs(ev.delta);
-
-        this.activeHits.push({
-          family:     ev.family,
-          x:          random(width  * 0.1, width  * 0.9),
-          y:          random(height * 0.1, height * 0.9),
-          size:       map(ev.gain, 0, 1, 20, 120),
-          r, g, b,
-          alpha:      200,
-          expiresAt:  now + lifetimeMs,
-          lifetimeMs,
-          startedAt:  now,
-        });
-
-        this.strudelQueue.splice(i, 1);
-      } else {
-        i++;
-      }
-    }
-  }
 }
 
-// ─── Globals ──────────────────────────────────────────────────────────────────
 let painter;
 let bridge;
 let connectBtn;
 const renderer = new Map();
 
-// ─── setup ────────────────────────────────────────────────────────────────────
 function setup() {
-  createCanvas(windowWidth, windowHeight);
-  background(255);
+    createCanvas(windowWidth, windowHeight);
+    background(0);
 
-  painter = new PainterTask();
-  bridge  = new BridgeClient();
+    painter = new PainterTask();
+    bridge = new BridgeClient();
 
-  bridge.onConnect(() => {
-    connectBtn.html("Desconectar");
-    painter.postEvent({ type: EVENTS.CONNECT });
-  });
-
-  bridge.onDisconnect(() => {
-    connectBtn.html("Conectar");
-    painter.postEvent({ type: EVENTS.DISCONNECT });
-  });
-
-  bridge.onStatus((s) => {
-    console.log("BRIDGE STATUS:", s.state, s.detail ?? "");
-  });
-
-  bridge.onData((data) => {
-    painter.postEvent({
-      type:    EVENTS.DATA,
-      payload: { x: data.x, y: data.y, btnA: data.btnA, btnB: data.btnB },
+    bridge.onConnect(() => {
+        connectBtn.html("Disconnect");
+        painter.postEvent({ type: EVENTS.CONNECT });
     });
-  });
 
-  bridge.onStrudel((msg) => {
-    painter.postEvent({
-        type: EVENTS.STRUDEL,
-        payload: {
-        ...msg.payload,
-        timestamp: msg.timestamp
-        },
+    bridge.onDisconnect(() => {
+        connectBtn.html("Connect");
+        painter.postEvent({ type: EVENTS.DISCONNECT });
     });
-  });
 
+    bridge.onStatus((s) => {
+        console.log("BRIDGE STATUS:", s.state, s.detail ?? "");
+    });
 
-  connectBtn = createButton("Conectar");
-  connectBtn.position(10, 10);
-  connectBtn.style("z-index", "10");
-  connectBtn.style("position", "absolute");
-  connectBtn.mousePressed(() => {
-    if (bridge.isOpen) bridge.close();
-    else bridge.open();
-  });
+    bridge.onData((data) => {
 
-  renderer.set(painter.estado_corriendo, drawRunning);
+        if (data.type === "strudel") {
+            painter.postEvent({ type: EVENTS.DATA, payload: data });
+            return;
+        }
+
+        painter.postEvent({
+            type: EVENTS.DATA,
+            payload: {
+                x: data.x,
+                y: data.y,
+                btnA: data.btnA,
+                btnB: data.btnB
+            }
+        });
+    });
+
+    connectBtn = createButton("Connect");
+    connectBtn.position(10, 10);
+    connectBtn.mousePressed(() => {
+        if (bridge.isOpen) bridge.close();
+        else bridge.open();
+    });
+
+    renderer.set(painter.estado_corriendo, drawRunning);
 }
 
-// ─── draw ─────────────────────────────────────────────────────────────────────
 function draw() {
-  background(255);
-  painter.update();
-
-  // Tick de la cola temporal: separado del renderizado
-  if (painter.state === painter.estado_corriendo) {
-    painter.tickStrudel();
-  }
-
-  renderer.get(painter.state)?.();
+    painter.update();
+    renderer.get(painter.state)?.();
 }
 
-// ─── drawRunning: SOLO lee estado ya calculado y dibuja ───────────────────────
-// Aquí no se parsea ningún mensaje, no se interpreta ningún tipo de evento
 function drawRunning() {
-  const mb  = painter.rxData;
-  const now = Date.now();
 
-  // ── Visualización del acelerómetro ────────────────────────────────────────
-  if (mb.ready && mb.btnA) {
+    if (painter.mode === "strudel") {
+
+        background(0, 30);
+
+        let now = Date.now();
+
+        for (let i = painter.activeAnimations.length - 1; i >= 0; i--) {
+            let anim = painter.activeAnimations[i];
+
+            let elapsed = now - anim.startTime;
+            let p = elapsed / anim.duration;
+
+            if (p <= 1) {
+                dibujarElemento(anim, p);
+            } else {
+                painter.activeAnimations.splice(i, 1);
+            }
+        }
+
+        return;
+    }
+
+
+    else {
+
+        let mb = painter.rxData;
+
+        if (!mb.ready) return;
+
+        if (mb.btnA == 1) {
+
+            push();
+            translate(width / 2, height / 2);
+
+            let circleResolution = int(map(mb.y + 100, 0, height, 2, 10));
+            let radius = mb.x - width / 2;
+            let angle = TAU / circleResolution;
+
+            if (mb.btnB == 1) {
+                fill(34, 45, 122, 50);
+            } else {
+                noFill();
+            }
+
+            beginShape();
+            for (let i = 0; i <= circleResolution; i++) {
+                let x = cos(angle * i) * radius;
+                let y = sin(angle * i) * radius;
+                vertex(x, y);
+            }
+            endShape();
+
+            pop();
+        }
+
+        return;
+    }
+}
+
+
+
+function dibujarElemento(anim, p) {
     push();
-    translate(width / 2, height / 2);
 
-    let circleResolution = int(map(mb.y, 0, height, 2, 10));
-    let radius = mb.x - width / 2;
-    let angle  = TAU / circleResolution;
+    switch (anim.type) {
+        case 'tr909bd':
+            dibujarBombo(p, anim.color);
+            break;
 
-    if (mb.btnB) fill(34, 45, 122, 50);
-    else         noFill();
+        case 'tr909sd':
+            dibujarCaja(p, anim.color);
+            break;
 
-    beginShape();
-    for (let i = 0; i <= circleResolution; i++) {
-      vertex(cos(angle * i) * radius, sin(angle * i) * radius);
+        case 'tr909hh':
+        case 'tr909oh':
+            dibujarHat(anim, p, anim.color);
+            break;
+
+        default:
+            dibujarDefault(anim, p, anim.color);
+            break;
     }
-    endShape();
+
     pop();
-  }
-
-  // ── Visualización musical: leer activeHits y dibujar ─────────────────────
-  noStroke();
-  for (const hit of painter.activeHits) {
-    const age      = now - hit.startedAt;
-    const progress = age / hit.lifetimeMs;
-    const alpha    = lerp(hit.alpha, 0, progress);
-    const size     = hit.size * (1 + progress * 0.6);
-
-    fill(hit.r, hit.g, hit.b, alpha);
-
-    if (hit.family === "hh") {
-      // Hihat → línea horizontal delgada
-      stroke(hit.r, hit.g, hit.b, alpha);
-      strokeWeight(2);
-      noFill();
-      line(hit.x - size * 0.6, hit.y, hit.x + size * 0.6, hit.y);
-      noStroke();
-
-    } else if (hit.family === "bd") {
-      // Kick → anillo expansivo
-      stroke(hit.r, hit.g, hit.b, alpha);
-      strokeWeight(3 * (1 - progress));
-      noFill();
-      circle(hit.x, hit.y, size);
-      noStroke();
-
-    } else if (hit.family === "sd" || hit.family === "cp") {
-      // Snare / Clap → rectángulo rotado
-      push();
-      translate(hit.x, hit.y);
-      rotate(QUARTER_PI);
-      fill(hit.r, hit.g, hit.b, alpha);
-      rect(-size * 0.3, -size * 0.3, size * 0.6, size * 0.6);
-      pop();
-
-    } else {
-      // Bass / synth / other → elipse sólida
-      circle(hit.x, hit.y, size);
-    }
-  }
 }
 
-// ─── windowResized ────────────────────────────────────────────────────────────
+function dibujarBombo(p, c) {
+    let d = lerp(100, 600, p);
+    let alpha = lerp(255, 0, p);
+    fill(c[0], c[1], c[2], alpha);
+    circle(width / 2, height / 2, d);
+}
+
+function dibujarCaja(p, c) {
+    let w = lerp(width, 0, p);
+    let alpha = lerp(255, 0, p);
+    fill(c[0], c[1], c[2], alpha);
+    rect(width / 2, height / 2, w, 50);
+}
+
+function dibujarHat(anim, p, c) {
+    let sz = lerp(40, 0, p);
+    fill(c[0], c[1], c[2]);
+    rect(anim.x, anim.y, sz, sz);
+}
+
+function dibujarDefault(anim, p, c) {
+    let size = lerp(100, 0, p);
+    let angle = p * TWO_PI;
+
+    translate(anim.x, anim.y);
+    rotate(angle);
+
+    stroke(c[0], c[1], c[2]);
+    noFill();
+
+    rect(0, 0, size, size);
+    line(-size, 0, size, 0);
+    line(0, -size, 0, size);
+}
+
+function getColorForSound(s) {
+    const colors = {
+        'tr909bd': [255, 0, 80],
+        'tr909sd': [0, 200, 255],
+        'tr909hh': [255, 255, 0],
+        'tr909oh': [255, 150, 0]
+    };
+
+    if (colors[s]) return colors[s];
+
+    let charCode = s.charCodeAt(0) || 0;
+
+    return [
+        (charCode * 123) % 255,
+        (charCode * 456) % 255,
+        (charCode * 789) % 255
+    ];
+}
+
 function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
+    resizeCanvas(windowWidth, windowHeight);
 }
-``` 
+```
+
+Node BridgeServer en este caso: node bridgeServer.js --device strudel --wsPort 8081 --strudelPort 8080
 ## Bitácora de reflexión
