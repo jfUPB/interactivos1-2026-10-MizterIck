@@ -440,6 +440,152 @@ class BridgeClient {
 }
 ```
 
+A diferencia de las anteriores sesiones, en esta sketch adquiere una cantidad más considerable de modificaciones y adiciones:
+
+Primeramente se añade una variable que permite cambiar entre el "modo" microbit y strudel
+
+``` js
+this.mode = null;
+```
+
+Se incorpora la siguiente linea que hace que los datos de strudel sean procesados en el tiempo y no todos simultaneamente
+Tambien una estructura que hace su parte en guardar las animaciones activas
+
+``` js
+this.eventQueue = [];
+
+this.activeAnimations = [];
+```
+
+Se integra la siguiente linea para que se detecte el tipo de dato strudel y este sea enviado a la cola
+
+``` js
+if (data.type === "strudel") {
+    this.mode = "strudel";
+    this.eventQueue.push(data);
+    return;
+}
+```
+
+Se creó una función que procesa los eventos de la cola según su tiempo (timestamp)
+
+``` js
+_flushQueue() {
+    if (this.mode !== "strudel") return;
+
+    const now = Date.now();
+    this.eventQueue.sort((a, b) => a.timestamp - b.timestamp);
+    ...
+}
+```
+
+Dentro de la funcion drawRunning se crea la siguiente linea para evaluar cada animación según el tiempo que transcurre para que puedan activarse y desaparecer
+
+``` js
+    if (painter.mode === "strudel") {
+
+        background(0, 30);
+
+        let now = Date.now();
+
+        for (let i = painter.activeAnimations.length - 1; i >= 0; i--) {
+            let anim = painter.activeAnimations[i];
+
+            let elapsed = now - anim.startTime;
+            let p = elapsed / anim.duration;
+
+            if (p <= 1) {
+                dibujarElemento(anim, p);
+            } else {
+                painter.activeAnimations.splice(i, 1);
+            }
+        }
+
+        return;
+    }
+``` 
+
+Para finalizar se crea la lógica del dibujo totalmente separada del de sonido para evitar problemas, se le asigna a cada tipo de "sonido" su respectiva forma, color, etc.
+
+``` js
+function dibujarElemento(anim, p) {
+    push();
+
+    switch (anim.type) {
+        case 'tr909bd':
+            dibujarBombo(p, anim.color);
+            break;
+
+        case 'tr909sd':
+            dibujarCaja(p, anim.color);
+            break;
+
+        case 'tr909hh':
+        case 'tr909oh':
+            dibujarHat(anim, p, anim.color);
+            break;
+
+        default:
+            dibujarDefault(anim, p, anim.color);
+            break;
+    }
+
+    pop();
+}
+
+function dibujarBombo(p, c) {
+    let d = lerp(100, 600, p);
+    let alpha = lerp(255, 0, p);
+    fill(c[0], c[1], c[2], alpha);
+    circle(width / 2, height / 2, d);
+}
+
+function dibujarCaja(p, c) {
+    let w = lerp(width, 0, p);
+    let alpha = lerp(255, 0, p);
+    fill(c[0], c[1], c[2], alpha);
+    rect(width / 2, height / 2, w, 50);
+}
+
+function dibujarHat(anim, p, c) {
+    let sz = lerp(40, 0, p);
+    fill(c[0], c[1], c[2]);
+    rect(anim.x, anim.y, sz, sz);
+}
+
+function dibujarDefault(anim, p, c) {
+    let size = lerp(100, 0, p);
+    let angle = p * TWO_PI;
+
+    translate(anim.x, anim.y);
+    rotate(angle);
+
+    stroke(c[0], c[1], c[2]);
+    noFill();
+
+    rect(0, 0, size, size);
+    line(-size, 0, size, 0);
+    line(0, -size, 0, size);
+}
+
+function getColorForSound(s) {
+    const colors = {
+        'tr909bd': [255, 0, 80],
+        'tr909sd': [0, 200, 255],
+        'tr909hh': [255, 255, 0],
+        'tr909oh': [255, 150, 0]
+    };
+
+    if (colors[s]) return colors[s];
+
+    let charCode = s.charCodeAt(0) || 0;
+
+    return [
+        (charCode * 123) % 255,
+        (charCode * 456) % 255,
+        (charCode * 789) % 255
+    ];```
+
 Sketch
 
 ``` js
