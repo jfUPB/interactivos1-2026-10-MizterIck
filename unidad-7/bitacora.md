@@ -5,5 +5,7 @@
 
 ## Bitácora de aplicación 
 
+Nuevo OSCAdapter
+
 
 ## Bitácora de reflexión
