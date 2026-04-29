@@ -6,8 +6,7 @@
 ## Bitácora de aplicación 
 
 Nuevo OSCAdapter
-``` js
-// OSCAdapter.js
+``` js// OSCAdapter.js
 // Recibe mensajes OSC por UDP desde Open Stage Control,
 // los normaliza al contrato del sistema y los entrega
 // a bridgeServer mediante onData.
@@ -114,32 +113,15 @@ Nueva línea en bridgeClient
 bridgeServer
 
 ``` js
-
-//   Uso:
-//     node bridgeServer.js --device sim --wsPort 8081 --hz 30
-//     node bridgeServer.js --device microbit --wsPort 8081 --serialPort COM5 --baud 115200
-
-//   WS contract:
-//    * bridge To client:
-//        {type:"status", state:"ready|connected|disconnected|error", detail:"..."}
-//        {type:"microbit", x:int, y:int, btnA:bool, btnB:bool, t:ms}
-//    * client To bridge:
-//        {cmd:"connect"} | {cmd:"disconnect"}
-//        {cmd:"setSimHz", hz:30}
-//        {cmd:"setLed", x:2, y:3, value:9}
-
-
 const { WebSocketServer } = require("ws");
 const { SerialPort } = require("serialport");
 const SimAdapter = require("./adapters/SimAdapter");
-const MicrobitAsciiAdapter = require("./adapters/MicrobitASCIIAdapter");
-const MicrobitAscii2Adapter = require("./adapters/MicrobitASCII2Adapter");
+const MicrobitV2Adapter = require("./adapters/MicrobitV2Adapter");
 const MicrobitBinaryAdapter = require("./adapters/MicrobitBinaryAdapter");
 const StrudelAdapter = require("./adapters/StrudelAdapter");
 const STRUDEL_PORT = parseInt(getArg("strudelPort", "8080"), 10);
-// Ya tienes esto arriba — está bien:
 const OSCAdapter = require("./adapters/OSCAdapter");
-const OSC_PORT = parseInt(getArg("oscPort", "8082"), 10);
+
 
 const log = {
   info: (...args) => console.log(`[${new Date().toISOString()}] [INFO]`, ...args),
@@ -147,17 +129,13 @@ const log = {
   error: (...args) => console.error(`[${new Date().toISOString()}] [ERROR]`, ...args)
 };
 
-
 function getArg(name, def = null) {
   const i = process.argv.indexOf(`--${name}`);
   if (i >= 0 && i + 1 < process.argv.length) return process.argv[i + 1];
   return def;
 }
 
-function hasFlag(name) {
-  return process.argv.includes(`--${name}`);
-}
-
+function hasFlag(name) { return process.argv.includes(`--${name}`); }
 function nowMs() { return Date.now(); }
 
 function safeJsonParse(s) {
@@ -199,68 +177,81 @@ async function findMicrobitPort() {
 async function createAdapter() {
   if (DEVICE === "microbit") {
     const path = SERIAL_PATH ?? await findMicrobitPort();
-    if (!path) {
-      log.error("micro:bit not found. Use --serialPort to specify manually.");
-      process.exit(1);
-    }
+    if (!path) { log.error("micro:bit not found."); process.exit(1); }
     log.info(`micro:bit found at ${path}`);
-    return new MicrobitAsciiAdapter({ path, baud: BAUD, verbose: VERBOSE });
-  }
-  if (DEVICE === "microbit2") {
-    const path = SERIAL_PATH ?? await findMicrobitPort();
-    if (!path) {
-      log.error("micro:bit not found. Use --serialPort to specify manually.");
-      process.exit(1);
-    }
-    log.info(`micro:bit 2 found at ${path}`);
-    return new MicrobitAscii2Adapter({ path, baud: BAUD, verbose: VERBOSE });
+    return new MicrobitV2Adapter({ path, baud: BAUD, verbose: VERBOSE });
   }
   if (DEVICE === "microbit-bin") {
     const path = SERIAL_PATH ?? await findMicrobitPort();
-    if (!path) {
-      log.error("micro:bit not found. Use --serialPort to specify manually.");
-      process.exit(1);
-    }
+    if (!path) { log.error("micro:bit not found."); process.exit(1); }
     return new MicrobitBinaryAdapter({ path, baud: BAUD });
   }
   if (DEVICE === "strudel") {
-  return new StrudelAdapter({ port: STRUDEL_PORT, verbose: VERBOSE });
+    return new StrudelAdapter({ port: STRUDEL_PORT, verbose: VERBOSE });
+  }
+  if (DEVICE === "strudel-osc") {
+    const strudelPort = parseInt(getArg("strudelPort", "8080"), 10);
+    const oscPort = parseInt(getArg("oscPort", "8082"), 10);
+
+    return [
+      new StrudelAdapter({ port: strudelPort, verbose: VERBOSE }),
+      new OSCAdapter({ port: oscPort, verbose: VERBOSE })
+    ];
   }
 
-  return new SimAdapter({ hz: SIM_HZ }); // fallback obligatorio
+  return new SimAdapter({ hz: SIM_HZ });
 }
 
 async function main() {
   const wss = new WebSocketServer({ port: WS_PORT });
   log.info(`WS listening on ws://127.0.0.1:${WS_PORT} device=${DEVICE}`);
 
-  const adapter = await createAdapter();
+  const adapters = await createAdapter();
 
-  adapter.onConnected    = (detail) => { log.info(`[ADAPTER] Device Connected: ${detail}`); status(wss, "connected", detail); };
-  adapter.onDisconnected = (detail) => { log.warn(`[ADAPTER] Device Disconnected: ${detail}`); status(wss, "disconnected", detail); };
-  adapter.onError        = (detail) => { log.error(`[ADAPTER] Device Error: ${detail}`); status(wss, "error", detail); };
+  for (const adapter of adapters) {
+    adapter.onConnected = (detail) => {
+      log.info(`[ADAPTER] Connected: ${detail}`);
+      status(wss, "connected", detail);
+    };
 
-  adapter.onData = (d) => {
-    if (d.type === "strudel") { broadcast(wss, d); return; }
-    if (d.type === "osc")     { broadcast(wss, d); return; }
-    broadcast(wss, { type: "microbit", x: d.x, y: d.y, btnA: !!d.btnA, btnB: !!d.btnB, t: nowMs() });
-  };
+    adapter.onDisconnected = (detail) => {
+      log.warn(`[ADAPTER] Disconnected: ${detail}`);
+      status(wss, "disconnected", detail);
+    };
 
-  // OSC siempre corre en paralelo — instancia única
-  const oscAdapter = new OSCAdapter({ port: OSC_PORT, verbose: VERBOSE });
-  oscAdapter.onData         = (d) => broadcast(wss, d);
-  oscAdapter.onConnected    = (d) => log.info(`[OSC] ${d}`);
-  oscAdapter.onDisconnected = (d) => log.warn(`[OSC] ${d}`);
-  oscAdapter.onError        = (d) => log.error(`[OSC] ${d}`);
-  await oscAdapter.connect();
+    adapter.onError = (detail) => {
+      log.error(`[ADAPTER] Error: ${detail}`);
+      status(wss, "error", detail);
+    };
+
+    adapter.onData = (d) => {
+      if (d.type === "strudel" || d.type === "osc") {
+        broadcast(wss, d);
+        return;
+      }
+
+      broadcast(wss, {
+        type: "microbit",
+        x: d.x,
+        y: d.y,
+        btnA: !!d.btnA,
+        btnB: !!d.btnB,
+        t: nowMs(),
+      });
+    };
+  }
 
   status(wss, "ready", `bridge up (${DEVICE})`);
 
   wss.on("connection", (ws, req) => {
     log.info(`[NETWORK] Remote Client connected from ${req.socket.remoteAddress}. Total clients: ${wss.clients.size}`);
 
-    const state  = adapter.connected ? "connected" : "ready";
-    const detail = adapter.connected ? adapter.getConnectionDetail() : `bridge (${DEVICE})`;
+    const anyConnected = adapters.some(a => a.connected);
+    const state = anyConnected ? "connected" : "ready";
+
+    const detail = anyConnected
+      ? adapters.map(a => a.getConnectionDetail()).join(" + ")
+      : `bridge (${DEVICE})`;
     ws.send(JSON.stringify({ type: "status", state, detail, t: nowMs() }));
 
     ws.on("message", async (raw) => {
@@ -268,48 +259,82 @@ async function main() {
       if (!msg) return;
 
       if (msg.cmd === "connect") {
-        log.info(`[NETWORK] Client requested adapter connect`);
-        if (adapter.connected) {
-          ws.send(JSON.stringify({ type: "status", state: "connected", detail: adapter.getConnectionDetail(), t: nowMs() }));
-          return;
+        log.info(`[NETWORK] Client requested adapters connect`);
+
+        try {
+          for (const adapter of adapters) {
+            if (!adapter.connected) {
+              await adapter.connect();
+            }
+          }
+        } catch (e) {
+          const detail = `connect failed: ${e.message || e}`;
+          log.error(`[ADAPTER] ` + detail);
+          status(wss, "error", detail);
         }
-        try { await adapter.connect(); }
-        catch (e) { status(wss, "error", `connect failed: ${e.message || e}`); }
         return;
       }
 
       if (msg.cmd === "disconnect") {
-        log.info(`[NETWORK] Client requested adapter disconnect`);
-        if (wss.clients.size > 1) {
-          ws.send(JSON.stringify({ type: "status", state: "disconnected", detail: "logical disconnect only", t: nowMs() }));
-          return;
+        log.info(`[NETWORK] Client requested adapters disconnect`);
+
+        try {
+          for (const adapter of adapters) {
+            if (adapter.connected) {
+              await adapter.disconnect();
+            }
+          }
+          status(wss, "disconnected", "all adapters disconnected");
+        } catch (e) {
+          const detail = `disconnect failed: ${e.message || e}`;
+          log.error(`[ADAPTER] ` + detail);
+          status(wss, "error", detail);
         }
-        try { await adapter.disconnect(); }
-        catch (e) { status(wss, "error", `disconnect failed: ${e.message || e}`); }
         return;
       }
 
-      if (msg.cmd === "setSimHz" && adapter instanceof SimAdapter) {
-        await adapter.handleCommand(msg);
-        status(wss, "connected", `sim hz=${adapter.hz}`);
+      if (msg.cmd === "setSimHz") {
+        const simAdapter = adapters.find(a => a instanceof SimAdapter);
+
+        if (simAdapter) {
+          log.info(`Setting Sim Hz to ${msg.hz}`);
+          await simAdapter.handleCommand(msg);
+          status(wss, "connected", `sim hz=${simAdapter.hz}`);
+        }
         return;
       }
-
       if (msg.cmd === "setLed") {
-        try { await adapter.handleCommand?.(msg); }
-        catch (e) { status(wss, "error", `command failed: ${e.message || e}`); }
+        try {
+          for (const adapter of adapters) {
+            await adapter.handleCommand?.(msg);
+          }
+        } catch (e) {
+          const detail = `command failed: ${e.message || e}`;
+          log.error(`[ADAPTER] ` + detail);
+          status(wss, "error", detail);
+        }
         return;
       }
+
+      ws.on("close", () => {
+        log.info(`[NETWORK] Remote Client disconnected. Total clients left: ${wss.clients.size}`);
+        if (wss.clients.size === 0) {
+          for (const adapter of adapters) {
+            adapter.disconnect();
+          }
+        }
+      });
     });
 
-    ws.on("close", () => {
-      log.info(`[NETWORK] Remote Client disconnected. Total clients left: ${wss.clients.size}`);
-      if (wss.clients.size === 0) adapter.disconnect();
-    });
   });
 
-  if (DEVICE === "sim") await adapter.connect();
+  if (DEVICE === "sim") {
+    for (const adapter of adapters) {
+      await adapter.connect();
+    }
+  }
 }
+
 
 main().catch((e) => {
   log.error("Fatal:", e);
@@ -319,8 +344,7 @@ main().catch((e) => {
 
 sketch
 
-``` js
-const EVENTS = {
+``` jsconst EVENTS = {
     CONNECT: "CONNECT",
     DISCONNECT: "DISCONNECT",
     DATA: "DATA",
