@@ -6,7 +6,13 @@
 ## Bitácora de aplicación 
 
 Nuevo OSCAdapter
-``` js// OSCAdapter.js
+
+- Recibe mensajes por UDP usando node-osc.
+- Normaliza los datos al mismo formato del sistema (type: "osc").
+- Se integra al flujo general mediante onData, igual que los otros adapters.
+
+``` js
+// OSCAdapter.js
 // Recibe mensajes OSC por UDP desde Open Stage Control,
 // los normaliza al contrato del sistema y los entrega
 // a bridgeServer mediante onData.
@@ -103,6 +109,8 @@ module.exports = OSCAdapter;
 
 Nueva línea en bridgeClient
 
+- Se añade soporte explícito para el nuevo tipo de dato:
+
 ``` js
       if (msg.type === "osc") {
         this._onData?.(msg);
@@ -111,6 +119,17 @@ Nueva línea en bridgeClient
 ``` 
 
 bridgeServer
+
+- Se añade así mismmo soporte para el nuevo tipo de dato dentro del bridgeServer
+
+  ``` js
+  if (d.type === "strudel" || d.type === "osc")
+  ```
+- De la misma forma se añade un nuevo modo de ejecución
+
+  ``` js
+  if (DEVICE === "strudel-osc")
+  ```
 
 ``` js
 const { WebSocketServer } = require("ws");
@@ -344,6 +363,27 @@ main().catch((e) => {
 
 sketch
 
+- Se agregaron nuevas variables para OSC
+
+  ```js
+  this.oscColor
+  this.oscSize
+  this.oscBgLayer
+  this.oscSpeed
+  ```
+- Diferencia de tipo de datos
+
+  ```js
+  if (data.type === "osc")
+  ```
+- Función _applyOscControl para traducir los mensajes OSC en cambios concretos dentro del estado del programa.
+- Se integran los parámetros necesarios de OSC dentro de la flushqueue
+- Dentro de DrawRunning se agrega "if (painter.oscBgLayer)" para poder controlar el fondo
+- Se utiliza la siguiente linea para poder escalar el bombo
+
+  ```js
+  const maxD = map(anim.size, 0, 1, 200, 800);
+  ```
 ``` js
     const EVENTS = {
     CONNECT: "CONNECT",
