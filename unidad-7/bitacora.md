@@ -703,6 +703,8 @@ function windowResized() {
     resizeCanvas(windowWidth, windowHeight);
 }
 ```
+Panel OSC
+<img width="825" height="389" alt="image" src="https://github.com/user-attachments/assets/07386f49-d565-468b-97d5-2442655f5ee9" />
 
 
 ``` js
