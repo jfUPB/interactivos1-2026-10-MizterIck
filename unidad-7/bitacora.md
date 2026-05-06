@@ -344,7 +344,8 @@ main().catch((e) => {
 
 sketch
 
-``` jsconst EVENTS = {
+``` js
+    const EVENTS = {
     CONNECT: "CONNECT",
     DISCONNECT: "DISCONNECT",
     DATA: "DATA",
